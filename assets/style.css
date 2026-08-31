@@ -1486,7 +1486,7 @@ button { font-family: inherit; cursor: pointer; }
 }
 .contact-box strong { display:block; font-size: 12px; margin-bottom: 4px; color: var(--color-accent-text); }
 
-.request-card__actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.request-card__actions { display: flex; gap: 10px; flex-wrap: wrap; row-gap: 26px; }
 .request-card__actions .btn { padding: 8px 18px; font-size: 12.5px; }
 
 .btn--sm { padding: 8px 18px; font-size: 12.5px; }
@@ -1792,4 +1792,8 @@ button { font-family: inherit; cursor: pointer; }
 .toggle-switch input:focus-visible + .toggle-switch__track {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
+}
+/* 「その他」カテゴリのスキルタグ：常に右上に×（完全削除）ボタンを表示する */
+.expertise-remove:hover {
+  background: var(--color-danger, #d9534f) !important;
 }

@@ -6,7 +6,7 @@
 const ROLE_META = {
   INSTRUCTOR: { label: "講師" },
   COMPANY:    { label: "企業" },
-  INDIVIDUAL: { label: "個人" },
+  INDIVIDUAL: { label: "生徒" },
   ADMIN:      { label: "管理者" },
 };
 

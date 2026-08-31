@@ -5,6 +5,31 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>講師を探す | ケンシュウリンク</title>
 <link rel="stylesheet" href="assets/style.css">
+<style>
+  .multi-select { position: relative; }
+  .multi-select summary {
+    list-style: none; cursor: pointer; padding: 9px 12px;
+    border: 1px solid var(--color-border); border-radius: var(--radius-s);
+    background: var(--color-surface); font-size: 13px; user-select: none;
+  }
+  .multi-select summary::-webkit-details-marker { display: none; }
+  .multi-select summary::after { content: "▾"; float: right; opacity: .6; }
+  .multi-select__panel {
+    position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; min-width: 220px;
+    max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;
+    background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: var(--radius-s); padding: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.08);
+  }
+  .multi-select__panel optgroup-label {
+    font-weight: 700; font-size: 12px; margin-top: 6px;
+  }
+  .multi-select__option {
+    display: flex; align-items: center; gap: 6px; font-size: 12.5px;
+    padding: 4px 6px; border-radius: var(--radius-s); cursor: pointer;
+  }
+  .multi-select__option:hover { background: var(--color-bg); }
+  .multi-select__option input { width: auto; }
+</style>
 </head>
 <body data-active-nav="instructors.html" data-role-theme="business">
 
@@ -22,37 +47,41 @@
   <!-- ===================== フィルターバー ===================== -->
   <form class="filter-bar" id="filterForm">
     <div class="filter-field">
-      <label for="filterExpertise">分野</label>
-      <select id="filterExpertise">
-        <option value="">すべて</option>
-      </select>
+      <label>分野（複数選択可）</label>
+      <details class="multi-select" id="expertiseDetails">
+        <summary>すべて</summary>
+        <div class="multi-select__panel" id="expertiseOptions"></div>
+      </details>
     </div>
 
     <div class="filter-field">
-      <label for="filterArea">対応エリア</label>
-      <select id="filterArea">
-        <option value="">すべて</option>
-      </select>
+      <label>対応エリア（複数選択可）</label>
+      <details class="multi-select" id="areaDetails">
+        <summary>すべて</summary>
+        <div class="multi-select__panel" id="areaOptions"></div>
+      </details>
     </div>
 
     <div class="filter-field">
-      <label for="filterFormat">形態</label>
-      <select id="filterFormat">
-        <option value="">すべて</option>
-        <option value="ONLINE">オンライン</option>
-        <option value="ONSITE">対面</option>
-        <option value="HYBRID">オンライン・対面 両方</option>
-      </select>
+      <label>形態（複数選択可）</label>
+      <details class="multi-select" id="formatDetails">
+        <summary>すべて</summary>
+        <div class="multi-select__panel" id="formatOptions">
+          <label class="multi-select__option"><input type="checkbox" value="ONLINE"> オンライン</label>
+          <label class="multi-select__option"><input type="checkbox" value="ONSITE"> 対面</label>
+          <label class="multi-select__option"><input type="checkbox" value="HYBRID"> オンライン・対面 両方</label>
+        </div>
+      </details>
     </div>
 
     <div class="filter-field">
-      <label for="filterBudget">予算（時間あたり／下限）</label>
-      <select id="filterBudget">
-        <option value="">すべて</option>
-        <option value="10000">〜10,000円</option>
-        <option value="15000">〜15,000円</option>
-        <option value="20000">〜20,000円</option>
-      </select>
+      <label for="filterRateMin">希望単価（円／時間）</label>
+      <input type="number" id="filterRateMin" min="0" step="1000" placeholder="例：10000">
+    </div>
+
+    <div class="filter-field">
+      <label for="filterRateMax">最低単価（円／時間）</label>
+      <input type="number" id="filterRateMax" min="0" step="1000" placeholder="例：20000">
     </div>
 
     <button type="button" class="filter-reset" id="resetFilters">条件をリセット</button>
@@ -71,12 +100,25 @@
 <script src="assets/auth.js"></script>
 <script src="assets/layout.js"></script>
 <script>
-  const areaSelect = document.getElementById("filterArea");
-  const formatSelect = document.getElementById("filterFormat");
-  const budgetSelect = document.getElementById("filterBudget");
-  const expertiseSelect = document.getElementById("filterExpertise");
+  const areaOptions = document.getElementById("areaOptions");
+  const areaDetails = document.getElementById("areaDetails");
+  const formatOptions = document.getElementById("formatOptions");
+  const formatDetails = document.getElementById("formatDetails");
+  const expertiseOptions = document.getElementById("expertiseOptions");
+  const expertiseDetails = document.getElementById("expertiseDetails");
+  const rateMinInput = document.getElementById("filterRateMin");
+  const rateMaxInput = document.getElementById("filterRateMax");
   const grid = document.getElementById("instructorGrid");
   const resultCount = document.getElementById("resultCount");
+
+  // チェックされた値の一覧を取得し、選択中の件数をsummaryラベルに反映する共通ヘルパー
+  function getChecked(container) {
+    return Array.from(container.querySelectorAll("input[type=checkbox]:checked")).map(el => el.value);
+  }
+  function updateSummaryLabel(detailsEl, checkedValues, allLabel) {
+    const summary = detailsEl.querySelector("summary");
+    summary.textContent = checkedValues.length ? `${checkedValues.length}件選択中` : allLabel;
+  }
 
   // トップページの「研修分野から探す」から遷移してきた場合、URL の ?category= を読み取り、
   // そのカテゴリに属する全サブカテゴリのいずれかを持つ講師を絞り込む（単一サブカテゴリ選択とは別軸）。
@@ -99,6 +141,17 @@
 
   let allInstructors = [];
 
+  // XSS対策: DBから来た値をinnerHTMLに差し込む前に必ずこの関数を通す。
+  function escapeHtml(value) {
+    if (value === null || value === undefined) return "";
+    return String(value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
   function initial(name) {
     return (name || "?").trim().slice(0, 1);
   }
@@ -107,7 +160,7 @@
     const rate = ins.desired_rate_min != null ? `¥${Number(ins.desired_rate_min).toLocaleString()}` : "応相談";
     const rating = ins.rating_avg != null ? Number(ins.rating_avg).toFixed(1) : "-";
     const fieldTags = (ins.expertise_fields || []).map(f => `<span class="instructor-card__tag">${f}</span>`).join("");
-    const certTag = ins.certifications ? `<span class="instructor-card__tag">${ins.certifications}</span>` : "";
+    const certTag = (ins.certifications && ins.certifications.length) ? `<span class="instructor-card__tag">${escapeHtml(ins.certifications[0])}</span>` : "";
     return `
       <a href="instructor-detail.html?id=${ins.id}" style="display:block;">
       <article class="instructor-card">
@@ -156,11 +209,19 @@
 
     if (error || !categories) return;
 
-    expertiseSelect.innerHTML = `<option value="">すべて</option>` + categories.map(cat => `
-      <optgroup label="${cat.name}">
-        ${(cat.training_subcategories || []).map(sc => `<option value="${sc.name}">${sc.name}</option>`).join("")}
-      </optgroup>
+    expertiseOptions.innerHTML = categories.map(cat => `
+      <div class="optgroup-label">${cat.name}</div>
+      ${(cat.training_subcategories || []).map(sc => `
+        <label class="multi-select__option"><input type="checkbox" value="${sc.name}"> ${sc.name}</label>
+      `).join("")}
     `).join("");
+
+    expertiseOptions.querySelectorAll("input[type=checkbox]").forEach(el => {
+      el.addEventListener("change", () => {
+        updateSummaryLabel(expertiseDetails, getChecked(expertiseOptions), "すべて");
+        applyFilters();
+      });
+    });
 
     if (categoryParam) {
       const matched = categories.find(cat => cat.name === categoryParam);
@@ -172,24 +233,35 @@
   }
 
   function populateFilterOptions() {
-    document.getElementById("filterArea").innerHTML =
-      `<option value="">すべて</option>` + JP_PREFECTURES.map(v => `<option value="${v}">${v}</option>`).join("");
+    areaOptions.innerHTML = JP_PREFECTURES.map(v => `
+      <label class="multi-select__option"><input type="checkbox" value="${v}"> ${v}</label>
+    `).join("");
+    areaOptions.querySelectorAll("input[type=checkbox]").forEach(el => {
+      el.addEventListener("change", () => {
+        updateSummaryLabel(areaDetails, getChecked(areaOptions), "すべて");
+        applyFilters();
+      });
+    });
   }
 
   function applyFilters() {
-    const area = areaSelect.value;
-    const format = formatSelect.value;
-    const budget = budgetSelect.value ? Number(budgetSelect.value) : null;
-    const field = expertiseSelect.value;
+    const areas = getChecked(areaOptions);
+    const formats = getChecked(formatOptions);
+    const fields = getChecked(expertiseOptions);
+    const rateMin = rateMinInput.value ? Number(rateMinInput.value) : null; // 希望単価（下限）
+    const rateMax = rateMaxInput.value ? Number(rateMaxInput.value) : null; // 最低単価（上限）
 
     const filtered = allInstructors.filter(ins => {
-      if (area && !(ins.prefectures || []).includes(area)) return false;
-      if (format) {
-        const matches = ins.work_style === format || ins.work_style === "HYBRID";
+      if (areas.length && !areas.some(a => (ins.prefectures || []).includes(a))) return false;
+      if (formats.length) {
+        const matches = formats.includes(ins.work_style) || (ins.work_style === "HYBRID" && formats.length);
         if (!matches) return false;
       }
-      if (budget && (ins.desired_rate_min == null || ins.desired_rate_min > budget)) return false;
-      if (field && !(ins.expertise_fields || []).includes(field)) return false;
+      // ご希望の単価帯として入力された金額と、講師本人の単価レンジ（最低単価〜希望単価）が
+      // 重なっているかどうかで絞り込む。
+      if (rateMin != null && (ins.desired_rate_max == null || ins.desired_rate_max < rateMin)) return false;
+      if (rateMax != null && (ins.desired_rate_min == null || ins.desired_rate_min > rateMax)) return false;
+      if (fields.length && !fields.some(f => (ins.expertise_fields || []).includes(f))) return false;
       if (categorySubcategoryNames && !(ins.expertise_fields || []).some(f => categorySubcategoryNames.includes(f))) return false;
       return true;
     });
@@ -230,16 +302,36 @@
     populateFilterOptions();
   }
 
-  areaSelect.addEventListener("change", applyFilters);
-  [formatSelect, budgetSelect, expertiseSelect].forEach(el => {
-    el.addEventListener("change", applyFilters);
+  formatOptions.querySelectorAll("input[type=checkbox]").forEach(el => {
+    el.addEventListener("change", () => {
+      updateSummaryLabel(formatDetails, getChecked(formatOptions), "すべて");
+      applyFilters();
+    });
+  });
+  [rateMinInput, rateMaxInput].forEach(el => el.addEventListener("input", applyFilters));
+
+  // 複数選択パネルは同時に1つだけ開いた状態にし、パネル外をクリックしたら閉じる
+  const allDetails = [expertiseDetails, areaDetails, formatDetails];
+  allDetails.forEach(d => {
+    d.addEventListener("toggle", () => {
+      if (d.open) {
+        allDetails.filter(other => other !== d).forEach(other => { other.open = false; });
+      }
+    });
+  });
+  document.addEventListener("click", (e) => {
+    allDetails.forEach(d => {
+      if (d.open && !d.contains(e.target)) d.open = false;
+    });
   });
 
   document.getElementById("resetFilters").addEventListener("click", () => {
-    areaSelect.value = "";
-    formatSelect.value = "";
-    budgetSelect.value = "";
-    expertiseSelect.value = "";
+    document.querySelectorAll(".multi-select__panel input[type=checkbox]").forEach(el => { el.checked = false; });
+    updateSummaryLabel(areaDetails, [], "すべて");
+    updateSummaryLabel(formatDetails, [], "すべて");
+    updateSummaryLabel(expertiseDetails, [], "すべて");
+    rateMinInput.value = "";
+    rateMaxInput.value = "";
     applyFilters();
   });
 

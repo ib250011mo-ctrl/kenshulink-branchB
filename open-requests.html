@@ -57,11 +57,6 @@
     try { return JSON.parse(localStorage.getItem(HIDDEN_KEY)) || []; }
     catch { return []; }
   }
-  function hideRequest(requestId) {
-    const ids = getHiddenIds();
-    if (!ids.includes(requestId)) ids.push(requestId);
-    localStorage.setItem(HIDDEN_KEY, JSON.stringify(ids));
-  }
 
   /* --- 未ログイン時：基本情報だけのプレビュー一覧（連絡先・応募操作なし） ---
      各カードの「詳細を見る」から request-detail.html に遷移し、そちらで

@@ -125,8 +125,19 @@
         </div>
 
         <div class="form-field">
-          <label for="certifications">保有資格</label>
-          <input type="text" id="certifications" placeholder="例：基本情報技術者試験" value="${p.certifications || ""}">
+          <label>保有資格（複数登録可）</label>
+          <div id="certificationsGroup" style="display:flex; flex-wrap:wrap; gap:8px; padding:10px; background:var(--color-bg); border-radius:var(--radius-s); min-height:20px;">
+            ${(p.certifications || []).map((cert, i) => `
+              <span class="cert-tag" data-index="${i}" style="display:flex; align-items:center; gap:6px; background:var(--color-surface); border:1px solid var(--color-border); border-radius:var(--radius-pill); padding:5px 8px 5px 12px; font-size:12.5px;">
+                ${escapeHtml(cert)}
+                <button type="button" class="cert-remove" data-index="${i}" aria-label="削除" style="border:none; background:none; cursor:pointer; color:var(--color-ink-soft); font-size:15px; line-height:1; padding:0;">×</button>
+              </span>
+            `).join("")}
+          </div>
+          <div style="display:flex; gap:8px; margin-top:8px;">
+            <input type="text" id="certificationInput" placeholder="例：基本情報技術者試験" maxlength="50" style="flex:1;">
+            <button type="button" id="certificationAddBtn" class="btn btn--ghost" style="flex-shrink:0;">追加</button>
+          </div>
         </div>
 
         <div class="form-field">
@@ -202,6 +213,47 @@
     wrap.innerHTML = formHtml(profile);
     await renderExpertiseGroup(user.id);
 
+    // 保有資格：配列を画面外の状態として持ち、タグを増減するたびに再描画する
+    let certificationsList = [...(profile?.certifications || [])];
+
+    function renderCertTags() {
+      document.getElementById("certificationsGroup").innerHTML = certificationsList.map((cert, i) => `
+        <span class="cert-tag" data-index="${i}" style="display:flex; align-items:center; gap:6px; background:var(--color-surface); border:1px solid var(--color-border); border-radius:var(--radius-pill); padding:5px 8px 5px 12px; font-size:12.5px;">
+          ${escapeHtml(cert)}
+          <button type="button" class="cert-remove" data-index="${i}" aria-label="削除" style="border:none; background:none; cursor:pointer; color:var(--color-ink-soft); font-size:15px; line-height:1; padding:0;">×</button>
+        </span>
+      `).join("");
+    }
+
+    function addCertification() {
+      const input = document.getElementById("certificationInput");
+      const value = input.value.trim();
+      if (!value) return;
+      if (certificationsList.includes(value)) {
+        input.value = "";
+        return;
+      }
+      certificationsList.push(value);
+      input.value = "";
+      renderCertTags();
+      input.focus();
+    }
+
+    document.getElementById("certificationAddBtn").addEventListener("click", addCertification);
+    document.getElementById("certificationInput").addEventListener("keydown", (e) => {
+      // フォーム内のEnterで誤送信されないようにする
+      if (e.key === "Enter") {
+        e.preventDefault();
+        addCertification();
+      }
+    });
+    document.getElementById("certificationsGroup").addEventListener("click", (e) => {
+      const btn = e.target.closest(".cert-remove");
+      if (!btn) return;
+      certificationsList.splice(Number(btn.dataset.index), 1);
+      renderCertTags();
+    });
+
     // 対応エリアの<summary>を選択状況に応じて動的に更新する
     function updatePrefectureSummary() {
       const selected = [...document.querySelectorAll('#prefectureGroup input[name="prefecture"]:checked')].map(cb => cb.value);
@@ -225,7 +277,7 @@
         self_pr: document.getElementById("selfPr").value.trim() || null,
         desired_rate_min: document.getElementById("rateMin").value ? Number(document.getElementById("rateMin").value) : null,
         desired_rate_max: document.getElementById("rateMax").value ? Number(document.getElementById("rateMax").value) : null,
-        certifications: document.getElementById("certifications").value.trim() || null,
+        certifications: certificationsList.length ? certificationsList : null,
         portfolio_url: document.getElementById("portfolioUrl").value.trim() || null,
         avatar_url: document.getElementById("avatarUrl").value.trim() || null,
         contact_email: document.getElementById("contactEmail").value.trim() || null,
@@ -397,11 +449,12 @@
     groupEl.innerHTML = categories.map(cat => `
       <div>
         <p style="font-size:12.5px; font-weight:700; margin:0 0 6px;">${cat.name}</p>
-        <div class="expertise-checks" data-category-id="${cat.id}" style="display:flex; flex-wrap:wrap; gap:8px;">
+        <div class="expertise-checks" data-category-id="${cat.id}" data-category-name="${escapeHtml(cat.name)}" style="display:flex; flex-wrap:wrap; gap:8px;">
           ${(cat.training_subcategories || []).map(sc => `
-            <label style="display:flex; align-items:center; gap:5px; font-size:12.5px; background:var(--color-surface); border:1px solid var(--color-border); border-radius:var(--radius-pill); padding:5px 12px; cursor:pointer;">
+            <label style="position:relative; display:flex; align-items:center; gap:5px; font-size:12.5px; background:var(--color-surface); border:1px solid var(--color-border); border-radius:var(--radius-pill); padding:5px 12px; cursor:pointer;">
               <input type="checkbox" value="${sc.id}" style="width:auto;" ${selectedIds.has(sc.id) ? "checked" : ""}>
               ${escapeHtml(sc.name)}
+              ${cat.name === "その他" ? `<span class="expertise-remove" title="完全に削除" style="position:absolute; top:-7px; right:-7px; width:17px; height:17px; border-radius:50%; background:var(--color-ink-soft, #888); color:#fff; font-size:11px; line-height:17px; text-align:center; cursor:pointer; display:flex; align-items:center; justify-content:center;">×</span>` : ""}
             </label>
           `).join("")}
         </div>
@@ -438,12 +491,88 @@
         }
 
         const label = document.createElement("label");
-        label.style.cssText = "display:flex; align-items:center; gap:5px; font-size:12.5px; background:var(--color-primary-soft, var(--color-bg)); border:1px solid var(--color-primary); border-radius:var(--radius-pill); padding:5px 12px; cursor:pointer;";
-        label.innerHTML = `<input type="checkbox" value="NEW::${catId}::${encodeURIComponent(name)}" checked style="width:auto;"> ${escapeHtml(name)}<span style="font-size:10.5px; color:var(--color-primary); font-weight:700;">NEW</span>`;
+        label.style.cssText = "position:relative; display:flex; align-items:center; gap:5px; font-size:12.5px; background:var(--color-primary-soft, var(--color-bg)); border:1px solid var(--color-primary); border-radius:var(--radius-pill); padding:5px 12px; cursor:pointer;";
+        const categoryName = checksEl.dataset.categoryName || "";
+        const removeSpan = categoryName === "その他"
+          ? `<span class="expertise-remove" title="削除" style="position:absolute; top:-7px; right:-7px; width:17px; height:17px; border-radius:50%; background:var(--color-ink-soft, #888); color:#fff; font-size:11px; line-height:17px; text-align:center; cursor:pointer; display:flex; align-items:center; justify-content:center;">×</span>`
+          : "";
+        label.innerHTML = `<input type="checkbox" value="NEW::${catId}::${encodeURIComponent(name)}" checked style="width:auto;"> ${escapeHtml(name)}<span style="font-size:10.5px; color:var(--color-primary); font-weight:700;">NEW</span>${removeSpan}`;
         checksEl.appendChild(label);
         input.value = "";
         input.focus();
       });
+    });
+
+    // ×ボタン：チェック済みのスキルを解除する。「新しいスキルを追加」で作った
+    // 未保存のNEW項目は、外しても意味がない（保存対象から外れるだけ）ので画面からも消す。
+    // ×ボタン：
+    //  - 「新しいスキルを追加」で作った未保存のNEW項目 → 画面から削除するだけ（元々DBに無い）
+    //  - 「その他」カテゴリの既存項目 → 確認の上、training_subcategoriesから完全削除
+    //    （全講師共通のマスタデータのため、他の講師の選択からも消える。元に戻せない）
+    //  - それ以外のカテゴリの既存項目 → 選択解除のみ（マスタ分類は残す）
+    groupEl.addEventListener("click", async (e) => {
+      const removeBtn = e.target.closest(".expertise-remove");
+      if (!removeBtn) return;
+      e.preventDefault(); // <label>内クリックによるデフォルトのチェックボックス切替を防ぐ
+
+      const label = removeBtn.closest("label");
+      const checkbox = label.querySelector('input[type="checkbox"]');
+      const checksEl = removeBtn.closest(".expertise-checks");
+      const categoryName = checksEl?.dataset.categoryName || "";
+      const isNew = checkbox.value.startsWith("NEW::");
+
+      if (isNew) {
+        label.remove();
+        return;
+      }
+
+      if (categoryName !== "その他") {
+        checkbox.checked = false;
+        return;
+      }
+
+      // 「その他」カテゴリの既存項目：完全削除フロー
+      const skillName = label.textContent.replace(removeBtn.textContent, "").trim();
+      const confirmed = window.confirm(
+        `「${skillName}」を完全に削除しますか？\nこの項目は他の講師の選択からも削除され、元に戻せません。`
+      );
+      if (!confirmed) return;
+
+      const subcategoryId = checkbox.value;
+      removeBtn.style.opacity = "0.4";
+      removeBtn.style.pointerEvents = "none";
+
+      // 1. 全講師の紐付け（instructor_expertise）を先に削除（外部キー制約を満たすため）
+      const { error: unlinkError } = await supabaseClient
+        .from("instructor_expertise")
+        .delete()
+        .eq("subcategory_id", subcategoryId);
+
+      if (unlinkError) {
+        console.error("subcategory unlink error:", unlinkError);
+        window.alert("削除に失敗しました。もう一度お試しください。");
+        removeBtn.style.opacity = "";
+        removeBtn.style.pointerEvents = "";
+        return;
+      }
+
+      // 2. マスタから本体を削除
+      const { error: deleteError } = await supabaseClient
+        .from("training_subcategories")
+        .delete()
+        .eq("id", subcategoryId);
+
+      if (deleteError) {
+        console.error("subcategory delete error:", deleteError);
+        // 既存の案件（training_requests）などが参照している場合は外部キー制約で失敗する
+        window.alert("この項目は既存の案件などで使用されているため削除できません。");
+        removeBtn.style.opacity = "";
+        removeBtn.style.pointerEvents = "";
+        return;
+      }
+
+      label.remove();
+      showToast("削除しました");
     });
 
     // Enterキーでも追加できるようにする

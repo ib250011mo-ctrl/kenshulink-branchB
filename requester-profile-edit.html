@@ -94,7 +94,7 @@
     }
 
     const isCompany = user.role === "COMPANY";
-    document.getElementById("pageTitle").textContent = isCompany ? "企業プロフィール" : "個人プロフィール";
+    document.getElementById("pageTitle").textContent = isCompany ? "企業プロフィール" : "生徒プロフィール";
 
     const { data: profile, error: fetchError } = await supabaseClient
       .from("requester_profiles")
